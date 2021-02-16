@@ -79,7 +79,7 @@ class GButton
 	
 	boolean hasClicks();	// проверка на наличие кликов. Сбрасывается после вызова
 	uint8_t getClicks();	// вернуть количество кликов
-	
+	uint8_t getHoldClicks();
 	boolean isStep();		// возвращает true по таймеру setStepTimeout, смотри пример
 	
   private:
@@ -90,7 +90,7 @@ class GButton
 	uint16_t _timeout = 0;
 	uint16_t _click_timeout = 0;
 	uint16_t _step_timeout = 0;
-	uint8_t btn_counter = 0, last_counter = 0;	
+	uint8_t btn_counter = 0, last_counter = 0, last_hold_counter = 0;	
 	uint32_t btn_timer = 0;		
 };
 

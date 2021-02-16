@@ -19,7 +19,7 @@
 // ============= НАСТРОЙКИ =============
 
 // -------- ВРЕМЯ -------
-#define GMT 3              // смещение (москва 3)
+#define GMT 2              // смещение (москва 3)
 #define NTP_ADDRESS  "europe.pool.ntp.org"    // сервер времени
 
 // -------- РАССВЕТ -------
@@ -42,12 +42,14 @@
 // шпаргалка по настройке матрицы здесь! https://alexgyver.ru/matrix_guide/
 
 // ============= ДЛЯ РАЗРАБОТЧИКОВ =============
+
 #if defined(SONOFF)
 #define LED_PIN 14             // пин ленты
 #else
 #define LED_PIN 13             // пин ленты
 #endif
-#define BTN_PIN 15
+#define BTN_PIN T3 // 15
+#define LED_ENABLE_PIN GPIO_NUM_2
 #define MODE_AMOUNT 18
 
 #define NUM_LEDS WIDTH * HEIGHT
@@ -76,8 +78,20 @@
 
 #include <ArduinoOTA.h>
 
+#include "esp_deep_sleep.h"
+
 #ifndef UDP_TX_PACKET_MAX_SIZE
 #define UDP_TX_PACKET_MAX_SIZE 15
+#endif
+
+#define GENERAL_DEBUG 1
+#if defined(GENERAL_DEBUG) && GENERAL_DEBUG_TELNET
+WiFiServer telnetServer(TELNET_PORT);                       // telnet сервер
+WiFiClient telnet;                                          // обработчик событий telnet клиента
+bool telnetGreetingShown = false;                           // признак "показано приветствие в telnet"
+#define LOG                   telnet
+#else
+#define LOG                   Serial
 #endif
 
 // ------------------- ТИПЫ --------------------
@@ -87,7 +101,7 @@ WiFiUDP Udp;
 WiFiUDP ntpUDP;
 NTPClient timeClient(ntpUDP, NTP_ADDRESS, GMT * 3600, NTP_INTERVAL);
 timerMinim timeTimer(3000);
-GButton touch(BTN_PIN, LOW_PULL, NORM_OPEN);
+GButton touch(BTN_PIN, HIGH_PULL, NORM_OPEN);
 
 // ----------------- ПЕРЕМЕННЫЕ ------------------
 char packetBuffer[UDP_TX_PACKET_MAX_SIZE + 1]; //buffer to hold incoming packet
@@ -122,10 +136,30 @@ boolean settChanged = false;
 unsigned char matrixValue[8][16];
 
 bool wifiConnected = false;
+
+void print_wakeup_reason(){
+  esp_sleep_wakeup_cause_t wakeup_reason;
+
+  wakeup_reason = esp_sleep_get_wakeup_cause();
+
+  switch(wakeup_reason)
+  {
+    case ESP_SLEEP_WAKEUP_EXT0 : Serial.println("Wakeup caused by external signal using RTC_IO"); break;
+    case ESP_SLEEP_WAKEUP_EXT1 : Serial.println("Wakeup caused by external signal using RTC_CNTL"); break;
+    case ESP_SLEEP_WAKEUP_TIMER : Serial.println("Wakeup caused by timer"); break;
+    case ESP_SLEEP_WAKEUP_TOUCHPAD : Serial.println("Wakeup caused by touchpad"); break;
+    case ESP_SLEEP_WAKEUP_ULP : Serial.println("Wakeup caused by ULP program"); break;
+    default : Serial.printf("Wakeup was not caused by deep sleep: %d\n",wakeup_reason); break;
+  }
+}
+
+void wake_callback(){
+  //placeholder callback function
+}
+
 void setup() {
   // ESP.wdtDisable();
   // ESP.wdtEnable(0);
-
   // ЛЕНТА
   FastLED.addLeds<WS2812B, LED_PIN, COLOR_ORDER>(leds, NUM_LEDS)/*.setCorrection( TypicalLEDStrip )*/;
   FastLED.setBrightness(BRIGHTNESS);
@@ -147,6 +181,10 @@ void setup() {
     Serial.println("non blocking config portal running");
     wifiManager.startConfigPortal("Fire Lamp AP", "ondemand");
   }
+
+  esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
+  Serial.print("Wake up reason: ");
+  Serial.println(wakeup_reason);
 
   Serial.println("local ip");
   Serial.println(WiFi.localIP());
@@ -199,12 +237,20 @@ void setup() {
   timeClient.begin();
   memset(matrixValue, 0, sizeof(matrixValue));
 
+  pinMode(LED_ENABLE_PIN, OUTPUT);
+  digitalWrite(LED_ENABLE_PIN, HIGH);
+  // esp_sleep_enable_touchpad_wakeup();
+  gpio_pullup_en(GPIO_NUM_15);
+  gpio_pulldown_dis(GPIO_NUM_15);
+  // esp_deep_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_AUTO); 
+  esp_sleep_enable_ext0_wakeup(GPIO_NUM_15, 0);
+
   randomSeed(micros());
 }
 
 void loop() {
   if (wifiConnected) {    
-    server.handleClient();
+    // server.handleClient();
   } else {
     wifiManager.process();
   }
